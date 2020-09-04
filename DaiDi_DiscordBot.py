@@ -9,7 +9,7 @@ Note: for the hands A2345 and 23456, the A and the 2 are considered "small"
 
 # Dependencies
 import json
-from Big2 import Dai_Di, Player
+from DaiDi_Game import Dai_Di, Player
 from numpy import inf
 from random import randint
 
