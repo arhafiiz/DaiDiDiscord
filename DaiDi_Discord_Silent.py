@@ -243,7 +243,7 @@ class Dai_Di:
 
             # Checks if cards form a "proper" straight
             if (self.isstraight(cards) and
-                card_numbers != card_numbers != ["J", "Q", "K", "A", "2"]):
+                card_numbers != ["J", "Q", "K", "A", "2"]):
 
                 # Checks if cards form a Royal Flush
                 # Checks for the appropriate card numbers and if cards are of only one suit
