@@ -170,7 +170,6 @@ It seems that the player that starts first has a huge advantage
 game_function([random_play, stronger_play], audible=1)
 
 
-
 # random_bot vs stronger_bot comparison
 random_first = []
 stronger_first = []
@@ -214,18 +213,20 @@ random_bot seems to do better when it goes first (although it still gets overwhe
 
 '''
 Simple Neural Network to check if hand is valid
-'''
 
+Next attempt: Try to use stratified random sampling based on the number of cards in hand
+              Otherwise data is skewed towards invalid 5-card hands
+'''
 
 import numpy as np
 import pandas as pd
 
 # Creating suitable dataset
-
+Game = Dai_Di()
 
 def is_valid(hand):
     # Returns bool value of whether hand is valid or not
-    return Dai_Di().hand_type(hand)[0] != False
+    return Game.hand_type(hand)
 
 playing_cards = [(i, j) for i in ["D", "C", "H", "S"]
                  for j in ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"]]
@@ -233,10 +234,10 @@ playing_cards = [(i, j) for i in ["D", "C", "H", "S"]
 # Function to create dummy variable
 # Also adds is_valid bool value at the end
 def card_dummy(hand):
-    dummies = [0]*53
+    dummies = np.zeros(53)
     for card in hand:
         dummies[playing_cards.index(card)] = 1
-    dummies[52] = is_valid(hand)
+    dummies[52] = is_valid(hand)[0] > 0
     return dummies
 
 from itertools import combinations
@@ -246,22 +247,22 @@ from sklearn.model_selection import train_test_split
 
 # There are only a finite and relatively small number of valid poker hands, so we can list them all here
 all_card_combinations = [list(card) for i in range(1, 6) for card in combinations(playing_cards, r=i)]
-valid_hands = [card for card in all_card_combinations if is_valid(card)]
-invalid_hands = [card for card in all_card_combinations if not is_valid(card)]
+valid_hands = [card for card in all_card_combinations if is_valid(card)[0] > 0]
+invalid_hands = [card for card in all_card_combinations if not is_valid(card)[0]]
 
 
 len(valid_hands)*5 # We will undersample the invalid hands to obtain a 1:5 ratio of valid to invalid hands
 valid_dummies = list(map(card_dummy, valid_hands))
 invalid_dummies = list(map(card_dummy, invalid_hands))
 
-seed(3432423532) # to keep data samples consistent
+seed(32142698) # to keep data samples consistent
 cards_data = valid_dummies + sample(invalid_dummies, k=89290)
 card_df = pd.DataFrame(data=cards_data, columns=(playing_cards + ['is_valid']))
 
 # Use a 75:12.5:12.5 train:test:validate data ratio
 x, y = card_df.iloc[:,:-1], card_df.iloc[:,-1]
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=3432423532)
-x_test, x_validate, y_test, y_validate = train_test_split(x, y, test_size=0.5, random_state=9912305)
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=912032)
+x_test, x_validate, y_test, y_validate = train_test_split(x, y, test_size=0.5, random_state=6510123)
 
 # Creating NN
 import tensorflow as tf
@@ -294,16 +295,54 @@ history = model.fit(
     validation_split=0, validation_data=(x_test, y_test))
 
 test_scores = model.evaluate(x_test, y_test, verbose=2)
-print(f'Test loss: {test_scores[0]}\nTest accuracy: {test_scores[1]}')
 # Test loss: 0.11602626740932465
 # Test accuracy: 0.9851980209350586
-
-predicted_y = list(map(lambda x: x > 0, model.predict(x_validate)))
-predicted_y = [pred[0] for pred in predicted_y]
-
-np.mean(predicted_y == y_validate) # Validation binary accuracy: 0.9711613842535558
 
 model.save('E:\Programming\Python\ANN\Models\Valid_Hand_Checker')
 del model
 
-valid_hand_model = keras.models.load_model('E:\Programming\Python\ANN\Models\Valid_Hand_Checker')
+model = keras.models.load_model('E:\Programming\Python\ANN\Models\Valid_Hand_Checker')
+
+# Confusion matrix
+from sklearn.metrics import confusion_matrix
+
+def accuracy_fn(ann_model, validate_data):
+    predicted_y = list(map(lambda x: x > 0, ann_model.predict(validate_data)))
+    predicted_y = [pred[0] for pred in predicted_y]
+
+    err_mat = confusion_matrix(y_true=y_validate, y_pred=predicted_y, labels=[1, 0])
+    tp, fp, fn, tn  = err_mat.ravel()
+
+    accuracy = (tp + tn)/(tp + tn + fp+ fn)
+    tp_rate =  tp/(tp + fn)
+    tn_rate = tn/(tn + fp)
+    precision = tp/(tp + fp)
+    
+    print(f'''Accuracy:\t\t\t{accuracy}\nTrue Positive Rate: {tp_rate}\nTrue Negative Rate: {tn_rate}\nPrecision:\t\t\t{precision}
+Confusion Matrix:\n{err_mat}''')
+    return (err_mat, accuracy, tp_rate, tn_rate, precision)
+
+err_mat, accuracy, tp_rate, tn_rate, precision = accuracy_fn(model, x_validate)
+
+# High accuracy (96.59%), very high true negative rate and precision (99.92%, 99.96%)
+# Acceptable true positive rate (83.19%)
+
+
+'''
+To do:
+Simple neural network to check if first hand beats the second one
+
+Criteria:
+    1) Must return False if either of the hands are invalid hands
+    2) Must return False if both hands are equal since this scenario is not possible during a game of Dai Di
+
+Considerations:
+    1) Huge number of paired hands possible (1,275,596,940 using all valid hands + equal number of invalid hands)
+    2) How to handle different types of hands
+        a) e.g. Flush obviously beats Pair but normally cannot be played after a Pair
+        b) How to deal with reverse matchups. Are they worth running or can they be replaced with code?
+            (i.e. does Straight vs Quads result renders Quads vs Straight result moot?)
+'''
+
+
+
